@@ -1,0 +1,61 @@
+# LAMMPS input script for a star polymer
+
+# --- User-defined variables ---
+variable eps_lj equal 1.0      # Lennard-Jones epsilon
+variable sig_lj equal 1.0      # Lennard-Jones sigma
+variable dt equal 0.005        # Time step (in LJ units)
+variable langv_seed equal 12345  # Random seed for Langevin thermostat
+variable nsteps equal 1000000  # Number of simulation steps
+
+# --- Initialization ---
+units           lj
+atom_style      molecular
+boundary        p p p     # Periodic boundary conditions in all directions
+read_data       tree.data # Read initial configuration from data file
+
+# --- Force field ---
+pair_style      lj/cut 2.5
+pair_coeff      1 1 ${eps_lj} ${sig_lj}  # core-core
+pair_coeff      1 2 ${eps_lj} ${sig_lj}  # core-arm
+pair_coeff      2 2 ${eps_lj} ${sig_lj}  # arm-arm
+
+bond_style      harmonic
+bond_coeff      1 100.0 1.0  # k, r0 for bond type 1 (core_arm)
+bond_coeff      2 100.0 1.0  # k, r0 for bond type 2 (arm_arm)
+
+# --- Settings ---
+mass            1 1.0     # Mass for atom type 1 (core)
+mass            2 1.0     # Mass for atom type 2 (arm)
+velocity        all create 1.0 12345
+
+# --- Minimization -----
+minimize 1.0e-4 1.0e-6 1000 10000 
+reset_timestep 0 
+
+# --- Simulation setup ---
+timestep        ${dt}     # Reduced timestep for stability
+neighbor        0.4 bin
+neigh_modify    delay 0 every 1 check yes
+
+# --- Fixes (Thermostat/Integrator) ---
+fix             1 all nve
+fix             2 all langevin 1.0 1.0 0.1 ${langv_seed}
+
+# **--- ADDED CODE ---**
+compute         rg all gyration
+variable        rg_val equal c_rg
+fix             rg_out all print 1000 "$(step) ${rg_val}" file rg_tree.txt screen no          
+
+# --- Output ---
+thermo          1000
+thermo_style    custom step temp pe etotal press vol
+dump            1 all custom 1000 tree_polymer_trajectory.lammpstrj id type x y z
+
+# --- Run simulation ---
+run ${nsteps}
+
+# --- Output final structure and last Rg value ---
+variable rg equal c_rg
+print "Final Radius of Gyration of Tree polymer = ${rg}"
+
+
